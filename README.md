@@ -2,7 +2,7 @@
 *CS490, Group 8 Final Project*
 
 ---
-[Click here for a live deployment of the Jersey Bulletin!](https://jersey-bulletin.herokuapp.com/)
+[Click here for a live deployment of the Jersey Bulletin!](https://jersey-bulletin.herokuapp.com/) -- **Please note:** You may have to wait a minute or two as well as refresh the page for the app to start up. This is due to the web server turning on via Heroku Dynos. After the initial start up, the web app will load normally!
 
 The Jersey Bulletin is an open forum for New Jersey residents while also acting as a one stop shop for information you may need as a New Jersey resident. This web app will feature different tabs containing different information relating to different aspects of life in the Garden state. Some of the information we hope to relay to the user include weather, politics, traffic, and news. Along with this information, all tabs will also feature their own bulletin board. In order to add any messages to the bulletin board, you must sign in with your Google account via OAuth.
 
