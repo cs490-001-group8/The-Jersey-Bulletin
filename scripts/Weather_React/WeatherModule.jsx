@@ -7,6 +7,13 @@ export default function WeatherModule() {
     const [currWeather, setCurrWeather] = useState(() => []);
     const [currCity, setCurrCity] = useState(() => 'Hourly');
     useEffect(() => {
+        Socket.emit('get last weather input', {
+            localStorage: localStorage.getItem('weatherInput'),
+        });
+        Socket.on('here last weather input', (data) => {
+            const weatherInput = data.last_weather_input;
+            localStorage.setItem('weatherInput', weatherInput);
+        });
         Socket.on('send weather', (data) => {
             setCurrCity(data.city_name);
             setCurrWeather([]);
@@ -32,6 +39,9 @@ export default function WeatherModule() {
             setCurrWeather([]);
             setCurrWeather((currWeather) => [...currWeather, 'Please enter a valid NJ zipcode or city name!']);
         });
+        return () => {
+            Socket.off('here last weather input');
+        };
     }, []);
 
     function handleSubmit(event) {
@@ -40,8 +50,13 @@ export default function WeatherModule() {
         Socket.emit('weather request', {
             city_name: currCityValue,
         });
+        Socket.emit('last weather input', {
+            last_weather_input: currCityValue,
+        });
+        localStorage.setItem('weatherInput', currCityValue);
         currCityEvent.value = '';
         event.preventDefault();
+        setCurrWeather([]);
     }
     return (
         <div className="widget weather_widget">
@@ -50,7 +65,7 @@ export default function WeatherModule() {
                 <input className="commuter-input" id="inputCity" placeholder="Search your city" type="text" />
             </form>
             <hr />
-            {currWeather}
+            {currWeather.length !== 0 || !localStorage.getItem("weatherInput") ? currWeather : <div className="loader" />}
         </div>
     );
 }

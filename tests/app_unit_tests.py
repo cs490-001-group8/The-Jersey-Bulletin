@@ -17,7 +17,8 @@ sys.path.append(join(dirname(__file__), "../"))
 # pylint: disable=W0612
 # pylint: disable=E0401
 # pylint: disable=C0330
-
+# pylint: disable=E1120
+# pylint: disable=R0201
 
 def weather_do_nothing(one, two, three):
     """Do nothing instead of getting weather"""
@@ -49,6 +50,9 @@ class MockedQueryResponseObj:
         self.comment_id = 7
         self.pattern = "w"
         self.value = "78"
+        self.personal_values = "{'News': True, 'Weather': True, 'Traffic': False, \
+            'Bills': False, 'Politician_Twitter': False, \
+            'Hiking_Destinations': True, 'Sports': False}"
 
 
 class MockedOrderResponse:
@@ -165,6 +169,19 @@ class MockedDBParkRecord:
         self.park_id = park_id
 
 
+class MockedDBUserInformationRecord:
+    """
+    mocking the user information record
+    return from DB calls
+    """
+
+    def __init__(self, weather_input):
+        """
+        initialize some db columns value
+        """
+        self.weather_input = weather_input
+
+
 class MockedAllFunction:
     """
     Mocked All method of sql query
@@ -186,7 +203,18 @@ class MockedAllFunction:
         """
         mocking method first that returns park record
         """
-        return MockedDBParkRecord(self.park_id)
+        if self.park_id == "12":
+            return "weather input"
+        elif self.park_id == "1":
+            return ""
+        elif self.park_id == "1111":
+            return MockedDBUserInformationRecord(self.park_id)
+        else:
+            return MockedDBParkRecord(self.park_id)
+
+    def update(self, update_value):
+        """Mocked update query"""
+        return self.park_id
 
 
 class MockedFavoriteParkQuery:
@@ -209,6 +237,39 @@ class MockedFavoriteParkQuery:
         returns all the records form db
         """
         return MockedAllFunction(self.park_id)
+
+
+class MockedPersonalTabFirst:
+    """Mock a false retrieval from the db"""
+    def __init__(self):
+        pass
+
+    def first(self):
+        """When a db call is done, return false"""
+        return False
+
+    def update(self, personal_values):
+        """When a db update is done, return false"""
+        return False
+
+
+class MockedPersonalTab:
+    """
+    Mocking a personal tab retrieval
+    """
+
+    def __init__(self, email, login_type, personal_values):
+        self.email = email
+        self.login_type = login_type
+        self.personal_values = personal_values
+
+    def filter(self, email, login_type):
+        """
+        Return the mocked tab in order
+        to simulate a false retrieval
+        from the db
+        """
+        return MockedPersonalTabFirst()
 
 
 # pylint: disable=R0902
@@ -385,6 +446,8 @@ class AppTestCases(unittest.TestCase):
             pass
         elif channel == "national parks update":
             pass
+        elif channel == "update existing personal":
+            pass
         else:
             raise ValueError("NO ESTABLISHED CHANNEL")
 
@@ -466,6 +529,8 @@ class AppTestCases(unittest.TestCase):
             pass
         elif channel == "national parks update":
             pass
+        elif channel == "update existing personal":
+            pass
         else:
             raise ValueError("NO ESTABLISHED CHANNEL")
 
@@ -528,6 +593,8 @@ class AppTestCases(unittest.TestCase):
             "flask_socketio.emit", self.mock_flask_emit_one
         ), mock.patch(
             "app.on_national_parks"
+        ), mock.patch(
+            "app.get_last_weather_input"
         ):
 
             mocker = mock.MagicMock()
@@ -536,6 +603,7 @@ class AppTestCases(unittest.TestCase):
                 "sqlalchemy.ext.declarative.declarative_base", mocker
             ):
                 import app
+
                 data = {
                     "newName": "Albert Einstein",
                     "newEmail": "einstein@mit.edu",
@@ -572,6 +640,8 @@ class AppTestCases(unittest.TestCase):
             "flask_socketio.emit", self.mock_flask_emit_one
         ), mock.patch(
             "app.on_national_parks"
+        ), mock.patch(
+            "app.get_last_weather_input"
         ):
             mocker = mock.MagicMock()
             mocker.values("AAAA")
@@ -607,16 +677,18 @@ class AppTestCases(unittest.TestCase):
         ), mock.patch(
             "flask_socketio.emit", self.mock_flask_emit_one
         ), mock.patch(
-                "app.on_national_parks"
+            "app.on_national_parks"
+        ), mock.patch(
+            "app.get_last_weather_input"
         ):
-            
+
             mocker = mock.MagicMock()
             mocker.values("AAAA")
             with mock.patch("app.flask.request", mocker), mock.patch(
                 "sqlalchemy.ext.declarative.declarative_base", mocker
             ):
                 import app
-                
+
                 app.on_like_comment({"comment_id": 7, "like": False})
 
                 data = {
@@ -745,25 +817,26 @@ class AppTestCases(unittest.TestCase):
         """Test the on_nationl_parks method that emits back all the parks to requested client"""
         import app
 
-        with mock.patch(
-            "flask_socketio.emit"
-        ) as mocked_socket_emit, mock.patch(
+        with mock.patch("flask_socketio.emit") as mocked_socket_emit, mock.patch(
             "app.national_parks"
         ) as mocked_national_parks, mock.patch(
             "app.SESSION.query"
         ) as mocked_session_query:
-                mocker = mock.MagicMock()
-                mocker.sid = "12345"
-                with mock.patch("app.flask.request",mocker):
-                    mocked_national_parks.return_value = [{"id": "12345"}]
-                    mocked_session_query.return_value = MockedFavoriteParkQuery(
-                        "akashpatel@gmail.com", "Google", "12345"
-                    )
-                    app.LOGGEDIN_CLIENTS = {
-                        "12345": {"newEmail": "akashpatel@gmail.com", "loginType": "Google"},
-                    }
-                    app.on_national_parks()
-                    mocked_socket_emit.assert_called()
+            mocker = mock.MagicMock()
+            mocker.sid = "12345"
+            with mock.patch("app.flask.request", mocker):
+                mocked_national_parks.return_value = [{"id": "12345"}]
+                mocked_session_query.return_value = MockedFavoriteParkQuery(
+                    "akashpatel@gmail.com", "Google", "12345"
+                )
+                app.LOGGEDIN_CLIENTS = {
+                    "12345": {
+                        "newEmail": "akashpatel@gmail.com",
+                        "loginType": "Google",
+                    },
+                }
+                app.on_national_parks()
+                mocked_socket_emit.assert_called()
 
     def test_on_add_favorite_parks(self):
         """
@@ -772,29 +845,25 @@ class AppTestCases(unittest.TestCase):
         """
         import app
 
-        with mock.patch(
-            "app.SESSION.add"
-        ) as mocked_session_add, mock.patch(
+        with mock.patch("app.SESSION.add") as mocked_session_add, mock.patch(
             "app.SESSION.delete"
-        ) as mocked_session_delete, mock.patch(
-            "app.SESSION.commit"
-        ), mock.patch(
+        ) as mocked_session_delete, mock.patch("app.SESSION.commit"), mock.patch(
             "app.SESSION.query"
         ) as mocked_session_query:
             mocker = mock.MagicMock()
             mocker.sid = "12345"
-            with mock.patch("app.flask.request",mocker):
+            with mock.patch("app.flask.request", mocker):
                 mocked_session_query.return_value = MockedFavoriteParkQuery(
                     "akashpatel@gmail.com", "Google", "12345"
                 )
-    
+
                 data = {"parkID": "1234"}
                 app.LOGGEDIN_CLIENTS = {
                     "12345": {"newEmail": "akashpatel@gmail.com", "loginType": "Google"}
                 }
                 app.on_add_favorite_parks(data)
                 mocked_session_add.assert_called_once()
-    
+
                 data = {"parkID": "12345"}
                 app.on_add_favorite_parks(data)
                 mocked_session_delete.assert_called_once()
@@ -804,9 +873,43 @@ class AppTestCases(unittest.TestCase):
         test_tabs = {"tab": "tested"}
         import app
 
-        with mock.patch("flask_socketio.emit", self.mock_flask_emit_weather):
-            app.on_personal_tab_change(test_tabs)
-            self.assertIsInstance(test_tabs, dict)
+        with mock.patch("app.SESSION.add") as mocked_session_add, mock.patch(
+            "app.SESSION.delete"
+        ) as mocked_session_delete, mock.patch("app.SESSION.commit"), mock.patch(
+            "app.SESSION.query"
+        ) as mocked_session_query:
+            mocker = mock.MagicMock()
+            mocker.sid = "12345"
+            with mock.patch("app.flask.request", mocker):
+                # pylint: disable=C0103
+                LOGGEDIN_CLIENTS = {}
+                LOGGEDIN_CLIENTS["12345"] = {"test": "done"}
+                with mock.patch("flask_socketio.emit", self.mock_flask_emit_weather):
+                    app.on_personal_tab_change(test_tabs)
+                    self.assertIsInstance(test_tabs, dict)
+
+    def test_on_personal_tab_change_failed(self):
+        """Test the personal tab socket"""
+        test_tabs = {"tab": "tested"}
+        import app
+
+        with mock.patch("app.SESSION.add") as mocked_session_add, mock.patch(
+            "app.SESSION.delete"
+        ) as mocked_session_delete, mock.patch("app.SESSION.commit"), mock.patch(
+            "app.SESSION.query"
+        ) as mocked_session_query:
+            mocker = mock.MagicMock()
+            mocker.sid = "12345"
+            with mock.patch("app.flask.request", mocker):
+                # pylint: disable=C0103
+                LOGGEDIN_CLIENTS = {}
+                LOGGEDIN_CLIENTS["12345"] = {"test": "done"}
+                mocked_session_query.return_value = MockedPersonalTab(
+                    "ameer", "fb", "test:true"
+                )
+                with mock.patch("flask_socketio.emit", self.mock_flask_emit_weather):
+                    app.on_personal_tab_change(test_tabs)
+                    self.assertIsInstance(test_tabs, dict)
 
     def mock_update_theme(self, data):
         """Mock Session update for theme"""
@@ -869,7 +972,9 @@ class AppTestCases(unittest.TestCase):
         ), mock.patch(
             "flask_socketio.emit", self.mock_flask_emit_one
         ), mock.patch(
-                "app.on_national_parks"
+            "app.on_national_parks"
+        ), mock.patch(
+            "app.get_last_weather_input"
         ):
             mocker = mock.MagicMock()
             mocker.values("AAAA")
@@ -877,13 +982,71 @@ class AppTestCases(unittest.TestCase):
                 "sqlalchemy.ext.declarative.declarative_base", mocker
             ):
                 import app
-                
+
                 data = {
                     "newName": "Albert Einstein",
                     "newEmail": "einstein@mit.edu",
                     "loginType": "Google",
                 }
                 app.on_user_login(data)
+
+    def test_on_last_weather_input(self):
+        """
+        Test function that either adds or updates t
+        he last last searched weather
+        """
+        import app
+
+        mocker = mock.MagicMock()
+        mocker.sid = "12345"
+        with mock.patch("app.flask.request", mocker), mock.patch(
+            "app.SESSION.add"
+        ) as mocked_session_add, mock.patch(
+            "app.SESSION.commit"
+        ) as mocked_session_commit, mock.patch(
+            "app.SESSION.query"
+        ) as mocked_session_query:
+            data = {"last_weather_input": "jersey city"}
+            mocked_session_query.return_value = MockedFavoriteParkQuery(
+                "akashpatel@gmail.com", "Google", "12"
+            )
+            app.LOGGEDIN_CLIENTS = {
+                "12345": {"newEmail": "akashpatel@gmail.com", "loginType": "Google"}
+            }
+            app.on_last_weather_input(data)
+            mocked_session_commit.assert_called_once()
+
+            mocked_session_query.return_value = MockedFavoriteParkQuery(
+                "akashpatel@gmail.com", "Google", "1"
+            )
+            app.on_last_weather_input(data)
+
+    def test_get_last_weather_input(self):
+        """
+        Test function that returns last
+        user inputed city that stored in
+        database or just return that they
+        send in the request back
+        """
+        import app
+
+        mocker = mock.MagicMock()
+        mocker.sid = "12345"
+        with mock.patch("app.flask.request", mocker), mock.patch(
+            "app.on_weather_request"
+        ), mock.patch("flask_socketio.emit") as mocked_socket_emit, mock.patch(
+            "app.SESSION.query"
+        ) as mocked_session_query:
+            data = {"localStorage": "jersey city"}
+            mocked_session_query.return_value = MockedFavoriteParkQuery(
+                "akashpatel@gmail.com", "Google", "1111"
+            )
+            app.LOGGEDIN_CLIENTS = {
+                "12345": {"newEmail": "akashpatel@gmail.com", "loginType": "Google"}
+            }
+            app.get_last_weather_input(data)
+
+            mocked_socket_emit.assert_called_once()
 
 
 if __name__ == "__main__":

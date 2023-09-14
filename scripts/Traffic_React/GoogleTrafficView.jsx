@@ -46,6 +46,7 @@ export default function GoogleTrafficView() {
     return (
         <div className="traffic-map">
             <input className="commuter-input" onKeyPress={onSearch} onChange={onChange} id="inputCity" value={search} placeholder="Search location" type="text" />
+
             <GoogleMapReact
               bootstrapURLKeys={{
                     key: getAPIkey(),

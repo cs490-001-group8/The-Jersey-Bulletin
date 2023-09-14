@@ -6,6 +6,7 @@
 # E1101 disabled, false positive when working with database.
 import os
 import json
+import ast
 from datetime import datetime
 import flask
 import flask_socketio
@@ -13,7 +14,7 @@ import sqlalchemy
 from dotenv import load_dotenv
 from pytz import timezone
 import tables
-from tables import BASE, Theme, FavoriteParks
+from tables import BASE, Theme, FavoriteParks, UserInformation, PersonalTab
 import hourly_weather
 import tweets
 import news
@@ -35,6 +36,9 @@ BASE.metadata.create_all(ENGINE, checkfirst=True)
 
 SESSION_MAKER = sqlalchemy.orm.sessionmaker(bind=ENGINE)
 SESSION = SESSION_MAKER()
+
+KEY_EMAIL = "newEmail"
+KEY_LOGIN_TYPE = "loginType"
 
 LOGGEDIN_CLIENTS = {}
 
@@ -70,6 +74,7 @@ def personal_tab():
     """When someone opens the recreation tab, send them the page"""
     return flask.render_template("index.html")
 
+
 @APP.route("/landing_page")
 def landing_page():
     """When someone click About link, render landing page"""
@@ -81,20 +86,33 @@ def on_user_login(data):
     """Recieve OAuth information when sent by the client"""
     if flask.request.sid not in LOGGEDIN_CLIENTS:
         LOGGEDIN_CLIENTS[flask.request.sid] = data
-    theme = SESSION.query(Theme).filter(
-        Theme.name == data["newName"],
-        Theme.email == data["newEmail"],
-        Theme.login_type == data["loginType"]).first()
+
+    theme = (
+        SESSION.query(Theme)
+        .filter(
+            Theme.name == data["newName"],
+            Theme.email == data["newEmail"],
+            Theme.login_type == data["loginType"],
+        )
+        .first()
+    )
     if not theme:
         result = {
             "name": data["newName"],
             "email": data["newEmail"],
             "loginType": data["loginType"],
             "pattern": "color",
-            "value": "white"
+            "value": "white",
         }
-        SESSION.add(Theme(data["newName"], data["newEmail"],
-                          data["loginType"], result["pattern"], result["value"]))
+        SESSION.add(
+            Theme(
+                data["newName"],
+                data["newEmail"],
+                data["loginType"],
+                result["pattern"],
+                result["value"],
+            )
+        )
         SESSION.commit()
     else:
         result = {
@@ -102,17 +120,31 @@ def on_user_login(data):
             "email": data["newEmail"],
             "loginType": data["loginType"],
             "pattern": theme.pattern,
-            "value": theme.value
+            "value": theme.value,
         }
     SOCKETIO.emit("theme", result)
+
+    curr_personal_tab = (
+        SESSION.query(PersonalTab)
+        .filter(
+            PersonalTab.email == data["newEmail"],
+            PersonalTab.login_type == data["loginType"],
+        )
+        .first()
+    )
+    if curr_personal_tab:
+        test_str = curr_personal_tab.personal_values
+        curr_obj = ast.literal_eval(test_str)
+        flask_socketio.emit("update existing personal", curr_obj)
+
     liked_comments = [
         comment.comment_id
-        for comment in SESSION.query(
-            tables.Like
-        ).filter_by(
+        for comment in SESSION.query(tables.Like)
+        .filter_by(
             email=data["newEmail"],
             login_type=data["loginType"],
-        ).all()
+        )
+        .all()
     ]
     SOCKETIO.emit("liked comments", {"comments": liked_comments})
     flask_socketio.emit(
@@ -122,6 +154,7 @@ def on_user_login(data):
         },
     )
     on_national_parks()
+    get_last_weather_input({"localStorage": ""})
 
 
 @SOCKETIO.on("update theme")
@@ -130,9 +163,36 @@ def on_update_theme(data):
     SESSION.query(Theme).filter(
         Theme.name == data["name"],
         Theme.email == data["email"],
-        Theme.login_type == data["loginType"]).update(
-            {'pattern': data["pattern"], 'value': data['value']})
+        Theme.login_type == data["loginType"],
+    ).update({"pattern": data["pattern"], "value": data["value"]})
     SESSION.commit()
+
+
+@SOCKETIO.on("personal tab change")
+def on_personal_tab_change(data):
+    """Updates the personal tab"""
+    flask_socketio.emit("update personal tab", data)
+
+    if flask.request.sid in LOGGEDIN_CLIENTS:
+        curr_email = LOGGEDIN_CLIENTS[flask.request.sid]["newEmail"]
+        curr_login = LOGGEDIN_CLIENTS[flask.request.sid]["loginType"]
+
+        curr_personal_tab = (
+            SESSION.query(PersonalTab)
+            .filter(
+                PersonalTab.email == curr_email, PersonalTab.login_type == curr_login
+            )
+            .first()
+        )
+
+        if not curr_personal_tab:
+            SESSION.add(PersonalTab(curr_email, curr_login, str(data)))
+            SESSION.commit()
+        else:
+            SESSION.query(PersonalTab).filter(
+                PersonalTab.email == curr_email, PersonalTab.login_type == curr_login
+            ).update({"personal_values": str(data)})
+            SESSION.commit()
 
 
 @SOCKETIO.on("disconnect")
@@ -155,11 +215,10 @@ def on_get_comments(data):
                 "id": comment.id,
                 "likes": comment.likes,
             }
-            for comment in SESSION.query(
-                tables.Comment
-                ).filter(
-                    tables.Comment.tab == which_tab
-                ).order_by(sqlalchemy.asc(tables.Comment.time)).all()
+            for comment in SESSION.query(tables.Comment)
+            .filter(tables.Comment.tab == which_tab)
+            .order_by(sqlalchemy.asc(tables.Comment.time))
+            .all()
         ]
         all_comments_tab.reverse()
         flask_socketio.emit("old comments", {"comments": all_comments_tab})
@@ -168,12 +227,12 @@ def on_get_comments(data):
             user_info = LOGGEDIN_CLIENTS[flask.request.sid]
             liked_comments = [
                 comment.comment_id
-                for comment in SESSION.query(
-                    tables.Like
-                ).filter_by(
+                for comment in SESSION.query(tables.Like)
+                .filter_by(
                     email=user_info["newEmail"],
                     login_type=user_info["loginType"],
-                ).all()
+                )
+                .all()
             ]
             flask_socketio.emit("liked comments", {"comments": liked_comments})
     except KeyError:
@@ -218,35 +277,38 @@ def on_like_comment(data):
         user_info = LOGGEDIN_CLIENTS[flask.request.sid]
         comment = SESSION.query(tables.Comment).filter_by(id=data["comment_id"]).first()
         if data["like"]:
-            if SESSION.query(
-                    tables.Like
-                ).filter_by(
-                    email=user_info["newEmail"],
-                    login_type=user_info["loginType"],
-                    comment_id=data["comment_id"]
-                ).first() is None:
-                comment.likes += 1
-                like = tables.Like(
-                    user_info["newEmail"],
-                    user_info["loginType"],
-                    data["comment_id"])
-                SESSION.add(like)
-        else:
-            if SESSION.query(
-                    tables.Like
-                ).filter_by(
-                    email=user_info["newEmail"],
-                    login_type=user_info["loginType"],
-                    comment_id=data["comment_id"]
-                ).first() is not None:
-                comment.likes -= 1
-                SESSION.query(
-                    tables.Like
-                    ).filter_by(
+            if (
+                    SESSION.query(tables.Like)
+                    .filter_by(
                         email=user_info["newEmail"],
                         login_type=user_info["loginType"],
-                        comment_id=data["comment_id"]
-                    ).delete()
+                        comment_id=data["comment_id"],
+                    )
+                    .first()
+                    is None
+            ):
+                comment.likes += 1
+                like = tables.Like(
+                    user_info["newEmail"], user_info["loginType"], data["comment_id"]
+                )
+                SESSION.add(like)
+        else:
+            if (
+                    SESSION.query(tables.Like)
+                    .filter_by(
+                        email=user_info["newEmail"],
+                        login_type=user_info["loginType"],
+                        comment_id=data["comment_id"],
+                    )
+                    .first()
+                    is not None
+            ):
+                comment.likes -= 1
+                SESSION.query(tables.Like).filter_by(
+                    email=user_info["newEmail"],
+                    login_type=user_info["loginType"],
+                    comment_id=data["comment_id"],
+                ).delete()
         SESSION.commit()
     except KeyError:
         return
@@ -261,12 +323,12 @@ def on_weather_request(data):
         request_name = request_name.lower()
 
     zip_codes = {}
-    with open('weather_resources/zip_dict.json') as zip_dict:
+    with open("weather_resources/zip_dict.json") as zip_dict:
         zip_codes = json.load(zip_dict)
     zip_dict.close()
 
     cities = {}
-    with open("weather_resources/city_list.txt", 'r') as city_file:
+    with open("weather_resources/city_list.txt", "r") as city_file:
         cities = {line.strip() for line in city_file}
     city_file.close()
 
@@ -290,12 +352,12 @@ def send_update_location(text):
         request_name = text.lower()
 
     zip_codes = {}
-    with open('weather_resources/zip_dict.json') as zip_dict:
+    with open("weather_resources/zip_dict.json") as zip_dict:
         zip_codes = json.load(zip_dict)
     zip_dict.close()
 
     cities = {}
-    with open("weather_resources/city_list.txt", 'r') as city_file:
+    with open("weather_resources/city_list.txt", "r") as city_file:
         cities = {line.strip() for line in city_file}
     city_file.close()
 
@@ -350,8 +412,8 @@ def on_national_parks():
     sid = flask.request.sid
     favorite_parks = []
     if sid in LOGGEDIN_CLIENTS:
-        client_email = LOGGEDIN_CLIENTS[sid]["newEmail"]
-        login_type = LOGGEDIN_CLIENTS[sid]["loginType"]
+        client_email = LOGGEDIN_CLIENTS[sid][KEY_EMAIL]
+        login_type = LOGGEDIN_CLIENTS[sid][KEY_LOGIN_TYPE]
         all_favorite_parks_ids = [
             each_favorite.park_id
             for each_favorite in SESSION.query(FavoriteParks)
@@ -384,8 +446,8 @@ def on_add_favorite_parks(data):
     sid = flask.request.sid
     park_id = data["parkID"]
     if sid in LOGGEDIN_CLIENTS:
-        client_email = LOGGEDIN_CLIENTS[sid]["newEmail"]
-        login_type = LOGGEDIN_CLIENTS[sid]["loginType"]
+        client_email = LOGGEDIN_CLIENTS[sid][KEY_EMAIL]
+        login_type = LOGGEDIN_CLIENTS[sid][KEY_LOGIN_TYPE]
         favorite_parks_ids = [
             each.park_id
             for each in SESSION.query(FavoriteParks)
@@ -409,10 +471,50 @@ def on_add_favorite_parks(data):
             SESSION.commit()
 
 
-@SOCKETIO.on("personal tab change")
-def on_personal_tab_change(data):
-    """Updates the personal tab"""
-    flask_socketio.emit("update personal tab", data)
+
+
+@SOCKETIO.on("last weather input")
+def on_last_weather_input(data):
+    """
+    send last inputed text in the weather
+    search bar if any exist in the DB
+    """
+    last_weather_input = data["last_weather_input"]
+    sid = flask.request.sid
+    if sid in LOGGEDIN_CLIENTS:
+        email = LOGGEDIN_CLIENTS[sid][KEY_EMAIL]
+        weather_input = SESSION.query(UserInformation).filter_by(email=email).first()
+        if not weather_input:
+            SESSION.add(UserInformation(email=email, weather_input=last_weather_input))
+            SESSION.commit()
+        else:
+            SESSION.query(UserInformation).filter_by(email=email).update(
+                {"weather_input": last_weather_input}
+            )
+            SESSION.commit()
+
+
+@SOCKETIO.on("get last weather input")
+def get_last_weather_input(data):
+    """
+    Return last weather input
+    from DB if any data exist
+    """
+    sid = flask.request.sid
+    local_storage = data["localStorage"]
+    if sid in LOGGEDIN_CLIENTS:
+        email = LOGGEDIN_CLIENTS[sid][KEY_EMAIL]
+        last_weather_input = (
+            SESSION.query(UserInformation).filter_by(email=email).first()
+        )
+        if last_weather_input:
+            flask_socketio.emit(
+                "here last weather input",
+                {"last_weather_input": last_weather_input.weather_input},
+            )
+            local_storage = last_weather_input.weather_input
+    if local_storage:
+        on_weather_request({"city_name": local_storage})
 
 
 if __name__ == "__main__":

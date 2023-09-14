@@ -2,7 +2,7 @@
 *CS490, Group 8 Final Project*
 
 ---
-[Click here for a live deployment of the Jersey Bulletin!](https://jersey-bulletin.herokuapp.com/)
+[Click here for a live deployment of the Jersey Bulletin!](https://jersey-bulletin.herokuapp.com/) -- **Please note:** You may have to wait a minute or two as well as refresh the page for the app to start up. This is due to the web server turning on via Heroku Dynos. After the initial start up, the web app will load normally!
 
 The Jersey Bulletin is an open forum for New Jersey residents while also acting as a one stop shop for information you may need as a New Jersey resident. This web app will feature different tabs containing different information relating to different aspects of life in the Garden state. Some of the information we hope to relay to the user include weather, politics, traffic, and news. Along with this information, all tabs will also feature their own bulletin board. In order to add any messages to the bulletin board, you must sign in with your Google account via OAuth.
 
@@ -49,6 +49,9 @@ In order to get the modules to work correctly, you will need to register and obt
 6. [OpenStates API](https://v3.openstates.org/docs) - This is used for the modules for politician information and bill information.
 	1. Go to the link above and click on "Register for an account".
 	2. Follow the steps and click "Activate API Key"
+7. [National Park Service](https://www.nps.gov/subjects/developer/get-started.htm) - used to retrieve NJ natinal parks information.
+	1. Go to the link above and sign up by filling out your information.
+	2. You will recieve an email containing your API key so this email safe and secure for your use
 
 Create a file named `.env` and set it up as the following:
 ```
@@ -62,6 +65,7 @@ TWITTER_ACCESS_TOKEN = "<Twitter access token>"
 TWITTER_ACCESS_TOKEN_SECRET = "<Twitter access token secret>"
 GOOGLE_MAP_API_KEY=<Google map API Key Here>
 POLITICS_API_KEY=<OpenStates API key Here>
+NPS_API_KEY=<NPS API Key Here>
 ```
 
 Note: Do not include quotes or the `<>` characters in the `.env` file.\
@@ -124,19 +128,30 @@ If you wish to check the linting on this project, execute the following commands
 1. Ameer Hassan
 	1. Create the weather widget and its functionality.
 	2. Establish Google OAuth.
-	3. Set up the Heroku deployment for first week.
+	3. Set up the Heroku deployment for the MVP deployment.
+	4. Set up zipcode/city authorization for the weather.
+	5. Create a list of city/zipcode pairs for authorization of NJ municipalities within the app.
+	6. Create the personal tab and user account persistence for the personal tabs.
 2. Joseph Fiore
 	1. Create the Comment section and have it be different for every tab.
 	2. Create the widget displaying tweets from political figures.
 	3. Create widget displaying info on political figures.
 	4. Create widget displaying bills up for vote.
-	5. Allow for users to like and unlike comments
+	5. Allow for users to like and unlike comments.
+	6. Show user's profile pictures when they log in.
 3. Akash Patel
 	1. Create the Traffic Widget so it shows a map of NJ and the traffic within.
 	2. Create the page's landing page and set up that page's CSS.
+	3. Create NJ National Park Widget and all the necessary features to make it usefull
+	4. Combined both OAuth login button into one login modal
+	5. Worked on storing use input in DB from the weather search bar for convenient 
+	6. All of the my above features were tested and linted before launching
 4. Karan Patoliya
 	1. Add tab switching and the functionality therein.
 	2. Give users the option of using FaceBook OAuth.
+	3. Add search to traffic widget & make it responsive concurrent to weather search.
+	4. Create the sports module with info on NJ sports team.
+	5. Redesigning and setting up landing page.
 5. Bishoy Kamel
 	1. Create a widget to display local news stories using cache.
 	2. Create news unit testing. 
